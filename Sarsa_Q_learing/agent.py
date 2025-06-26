@@ -33,8 +33,6 @@ class Sarsa:
             while not done:
                 next_state, reward, done, truncated, info = self.env.step(action)
                 next_action = self.epsilon_greedy_policy(next_state)
-
-                self.env.render()
                 self.Q[state][action] = self.Q[state][action] + self.learning_rate*(reward + self.gamma*self.Q[next_state][next_action] - self.Q[state][action])
                 state = next_state
                 action = next_action

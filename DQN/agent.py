@@ -56,8 +56,6 @@ class DQN:
                 done = done or truncated
                 self.rb.insert((state, action, reward, next_state, done))
                 self.train_step()
-
-                self.env.render()
                 
                 state = next_state
                 total_reward += reward
