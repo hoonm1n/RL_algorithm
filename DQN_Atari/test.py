@@ -14,7 +14,7 @@ def evaluate(env, model, device, episodes=10):
         total_reward = 0
         done = False
         while not done:
-            state_tensor = torch.FloatTensor(obs).unsqueeze(0).to(device)
+            state_tensor = torch.from_numpy(obs).to(device).float().unsqueeze(0) / 255.0
             with torch.no_grad():
                 action = model(state_tensor).argmax(dim=1).item()
             next_state, reward, terminated, truncated, _ = env.step(action)
