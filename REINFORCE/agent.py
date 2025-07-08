@@ -8,6 +8,8 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.distributions import Categorical
 
 from model import PolicyNetwork
+from model import ValueNetwork
+
 
 
 writer = SummaryWriter(log_dir=f"runs/cartpole_REINFORCE_{int(time.time())}")
@@ -20,7 +22,9 @@ class REINFORCE:
         self.ac_dim = env.action_space.n
         self.gamma = gamma
         self.policy = PolicyNetwork(self.ob_dim, self.ac_dim).to(device)
-        self.optimizer = optim.Adam(self.policy.parameters(), lr=1e-4)
+        self.value = ValueNetwork(self.ob_dim, self.ac_dim).to(device)
+        self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=1e-4)
+        self.value_optimizer = optim.Adam(self.value.parameters(), lr=1e-4)
         self.total_step = 0
         
 
@@ -61,22 +65,30 @@ class REINFORCE:
         for i in range(num_episodes):
             episode, total_reward = self.run_episode()
             G = 0
-            visited = set()
             writer.add_scalar("TotalReward/train", total_reward, self.total_step)
      
 
             for t in range(len(episode)-1,-1,-1):
                 state, action, reward = episode[t]
-                G = self.gamma * G + reward
                 state_ = torch.FloatTensor(state).to(self.device)
+
+                G = self.gamma * G + reward
+                V = self.value(state_)
                 log_probs = torch.log(self.policy(state_))
                 log_prob = log_probs[action]
 
-                loss = - log_prob * G
+                returns_tensor = torch.FloatTensor([G]).to(self.device)
 
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
+                policy_loss = - log_prob * (returns_tensor-V.detach())
+                value_loss = nn.MSELoss()(V, returns_tensor)
+
+                self.policy_optimizer.zero_grad()
+                policy_loss.backward()
+                self.policy_optimizer.step()
+
+                self.value_optimizer.zero_grad()
+                value_loss.backward()
+                self.value_optimizer.step()
 
 
             print(f"Episode {i}, Total Reward: {total_reward:.2f}")
