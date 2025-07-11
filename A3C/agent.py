@@ -17,7 +17,7 @@ from model import ActorCritic
 writer = SummaryWriter(log_dir=f"runs/cartpole_A3C_{int(time.time())}")
 
 class A3C:
-    def __init__(self, env, device, global_network, optimizer, global_step, lock, gamma=0.99):
+    def __init__(self, env, device, global_network, optimizer, global_step, lock, worker_idx, gamma=0.99):
         self.device = device
         self.env = env
         self.ob_dim = env.observation_space.shape[0]
@@ -34,7 +34,19 @@ class A3C:
         self.n_TD = 20
         self.t_max = 20
         self.max_grad_norm = 40.0
+        self.worker_idx = worker_idx
         
+
+    def set_seed(self):
+        base_seed = 1234
+
+        seed = base_seed + self.worker_idx
+
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+
+
 
 
     def get_action(self, state):
@@ -66,6 +78,8 @@ class A3C:
 
     
     def update(self, total_update_steps):
+        self.set_seed()
+
         episodes = 0
         while 1:
             state, _ = self.env.reset()
@@ -88,6 +102,7 @@ class A3C:
 
 
             writer.add_scalar("TotalReward/train", total_reward, self.global_step.value)
+            writer.add_scalar(f"TotalReward/train_{self.worker_idx}", total_reward, self.global_step.value)
             print(f"Episode {episodes}, Global Step: {self.global_step.value}, My process ID: {os.getpid()}, Total Reward: {total_reward:.2f}")
 
             if self.global_step.value >= total_update_steps:

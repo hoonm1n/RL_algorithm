@@ -7,11 +7,12 @@ from model import ActorCritic
 import torch.optim as optim
 
 
-def worker(global_network, optimizer, global_step, lock):
+def worker(global_network, optimizer, global_step, lock, worker_idx):
     worker_env = gym.make("CartPole-v1")
+    worker_env.reset(seed=1234 + worker_idx)
     worker_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    agent = A3C(worker_env, worker_device, global_network, optimizer, global_step, lock,  gamma=0.99,)
+    agent = A3C(worker_env, worker_device, global_network, optimizer, global_step, lock, worker_idx, gamma=0.99,)
     agent.update(total_update_steps=550000)
 
     print("worker done")
