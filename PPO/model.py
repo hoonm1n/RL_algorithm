@@ -8,12 +8,17 @@ class PolicyNetwork(nn.Module):
         self.fc1 = nn.Linear(state_dim, 64)
         self.fc2 = nn.Linear(64, 64)
         self.mu_output = nn.Linear(64, action_dim)
-        self.log_std = nn.Parameter(torch.zeros(action_dim))
+        self.log_std = nn.Parameter(torch.ones(action_dim)* -0.5)
 
     def forward(self, x):
         x = torch.tanh(self.fc1(x))
         x = torch.tanh(self.fc2(x))
         mu = self.mu_output(x)
+
+        # log_std = self.log_std.expand_as(mu)
+        # log_std = torch.clamp(log_std, min=-6.0, max=1.0)  
+        # std = torch.exp(log_std)
+
         std = torch.exp(self.log_std)
         return mu, std
 
@@ -32,31 +37,3 @@ class ValueNetwork(nn.Module):
         value = self.critic(x)
         return value
 
-
-
-
-
-
-
-
-# import torch
-# import torch.nn as nn
-# import torch.nn.functional as F
-
-
-# class ActorCritic(nn.Module):
-#     def __init__(self, state_dim, action_dim):
-#         super().__init__()
-#         self.fc1 = nn.Linear(state_dim, 64)
-#         self.fc2 = nn.Linear(64, 64)
-#         self.mu_output = nn.Linear(64, action_dim)
-#         self.log_std = nn.Parameter(torch.zeros(action_dim))
-#         self.critic = nn.Linear(64, 1)
-
-#     def forward(self, x):
-#         x = torch.tanh(self.fc1(x))
-#         x = torch.tanh(self.fc2(x))
-#         value = self.critic(x)
-#         mu = self.mu_output(x)
-#         std = torch.exp(self.log_std)
-#         return mu, std, value
