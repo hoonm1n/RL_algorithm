@@ -14,12 +14,8 @@ class PolicyNetwork(nn.Module):
         x = torch.tanh(self.fc1(x))
         x = torch.tanh(self.fc2(x))
         mu = self.mu_output(x)
-
-        # log_std = self.log_std.expand_as(mu)
-        # log_std = torch.clamp(log_std, min=-6.0, max=1.0)  
-        # std = torch.exp(log_std)
-
-        std = torch.exp(self.log_std)
+        log_std = torch.clamp(self.log_std, min=-1.0)
+        std = torch.exp(log_std)
         return mu, std
 
 

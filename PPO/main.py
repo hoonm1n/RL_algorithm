@@ -9,7 +9,7 @@ import torch.multiprocessing as mp
 
 
 def main():
-    num_envs = 4
+    num_envs = 8
     envs = gym.make_vec("HalfCheetah-v4", num_envs=num_envs, vectorization_mode="sync")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

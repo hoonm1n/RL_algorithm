@@ -9,7 +9,6 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.distributions import MultivariateNormal
 import torch.multiprocessing as mp
 
-# from model import ActorCritic
 from model import PolicyNetwork
 from model import ValueNetwork
 
@@ -28,9 +27,9 @@ class PPO:
         self.policy = PolicyNetwork(self.ob_dim, self.ac_dim).to(device)
         self.critic = ValueNetwork(self.ob_dim).to(device)
         self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=3e-4)
-        self.value_optimizer = optim.Adam(self.critic.parameters(), lr=1e-4)
+        self.value_optimizer = optim.Adam(self.critic.parameters(), lr=3e-4)
         self.total_step = 0
-        self.rollout_len = 512
+        self.rollout_len = 256
         self.total_episode = 0
         self.value_loss_coef = 0.5
         self.entropy_coef = 0.005
@@ -38,6 +37,7 @@ class PPO:
         self.clip_eps = 0.2
         self.num_envs = num_envs
         self.minibatch_size = 64
+        self.save_point = 0
 
 
         
@@ -50,13 +50,14 @@ class PPO:
             mu, std = self.policy(states_)
         cov = torch.diag_embed(std ** 2)
         dist = MultivariateNormal(mu, cov)
-        z = dist.rsample()
-        action = torch.tanh(z)
+        action = dist.rsample()
 
-        log_prob = dist.log_prob(z)
-        log_prob -= torch.sum(torch.log(1 - action ** 2 + 1e-6), dim=1)
-        # log_prob = dist.log_prob(action)
-        return action, log_prob, z
+        action_low = torch.tensor(self.envs.single_action_space.low, dtype=torch.float32, device=self.device)
+        action_high = torch.tensor(self.envs.single_action_space.high, dtype=torch.float32, device=self.device)
+
+        action_clipped = torch.clamp(action, action_low, action_high)
+        log_prob = dist.log_prob(action)
+        return action, log_prob, action_clipped
 
 
 
@@ -71,15 +72,14 @@ class PPO:
         rewards_all = [] 
         dones_all = [] 
         log_probs_all = []
-        z_all = []
 
         episode_rewards = [0] * self.num_envs
         completed_episode_rewards = []
         
 
         for _ in range(self.rollout_len):
-            actions, log_probs, zs = self.get_action(states)
-            actions_for_env = actions.cpu().numpy()
+            actions, log_probs, action_clippeds = self.get_action(states)
+            actions_for_env = action_clippeds.cpu().numpy()
             log_probs_numpy = log_probs.detach().cpu().numpy()
             next_states, rewards, terminateds, truncateds, infos = self.envs.step(actions_for_env)
             dones = np.logical_or(terminateds, truncateds)
@@ -90,7 +90,6 @@ class PPO:
             rewards_all.append(rewards)
             dones_all.append(dones)
             log_probs_all.append(log_probs_numpy)
-            z_all.append(zs.cpu().numpy())
 
 
             for i, reward in enumerate(rewards):
@@ -114,7 +113,7 @@ class PPO:
             mean_reward = np.mean(episode_rewards)
         print(f"Total Step {self.total_step}, Mean Reward: {mean_reward:.2f}")
 
-        return states_all, actions_all, next_states_all, rewards_all, dones_all, log_probs_all, z_all, mean_reward
+        return states_all, actions_all, next_states_all, rewards_all, dones_all, log_probs_all, mean_reward
 
 
 
@@ -153,14 +152,16 @@ class PPO:
     def update(self, total_update_steps):
         episodes = 0
         while 1:
-            states, actions, next_states, rewards, dones, log_probs, zs, mean_reward = self.rollout()
+            states, actions, next_states, rewards, dones, log_probs, mean_reward = self.rollout()
             
-            self.train_step(states, actions, next_states, rewards, dones, log_probs, zs)
+            self.train_step(states, actions, next_states, rewards, dones, log_probs)
 
             self.total_step += (len(states) * self.num_envs)
 
-            if self.total_step % 100000 == 0:
-                torch.save(self.policy.state_dict(), './checkpoints/model_state_dict_3.pth')
+            if (self.total_step // 100000) >= self.save_point:
+                torch.save(self.policy.state_dict(), './checkpoints/model_state_dict_8.pth')
+                self.save_point += 1
+                print("save")
 
             writer.add_scalar("MeanReward/train", mean_reward, self.total_step)
             # print(f"Episode {episodes}, Total Reward: {total_reward:.2f}")
@@ -169,7 +170,7 @@ class PPO:
                 break
             
 
-        torch.save(self.policy.state_dict(), './checkpoints/model_state_dict_3.pth')
+        torch.save(self.policy.state_dict(), './checkpoints/model_state_dict_8.pth')
 
         writer.close()
 
@@ -178,7 +179,7 @@ class PPO:
         
 
 
-    def train_step(self, states, actions, next_states, rewards, dones, log_probs, zs):
+    def train_step(self, states, actions, next_states, rewards, dones, log_probs):
 
         states = np.array(states)
         actions = np.array(actions) 
@@ -186,8 +187,6 @@ class PPO:
         next_states = np.array(next_states)
         dones = np.array(dones) 
         log_probs = np.array(log_probs) 
-        zs = np.array(zs) 
-
 
 
 
@@ -197,7 +196,6 @@ class PPO:
         next_states = torch.FloatTensor(next_states).to(self.device)
         dones = torch.FloatTensor(dones).unsqueeze(2).to(self.device)
         log_probs = torch.FloatTensor(log_probs).unsqueeze(2).to(self.device)
-        zs = torch.FloatTensor(zs).to(self.device)
 
 
 
@@ -207,7 +205,6 @@ class PPO:
         next_states = next_states.permute(1, 0, 2)
         dones = dones.permute(1, 0, 2)
         log_probs = log_probs.permute(1, 0, 2)
-        zs = zs.permute(1, 0, 2)
 
 
 
@@ -222,8 +219,8 @@ class PPO:
         next_states = next_states.reshape(-1, next_states.shape[2])
         dones = dones.reshape(-1, dones.shape[2])
         log_probs = log_probs.reshape(-1, log_probs.shape[2])
-        zs = zs.reshape(-1, zs.shape[2])
-        
+
+
         advantages = advantages.reshape(-1)
         returns = returns.reshape(-1, returns.shape[2])
 
@@ -233,21 +230,24 @@ class PPO:
         total_sample_size, _ = states.shape
 
 
-        dataset = TensorDataset(states, actions, log_probs, zs, advantages, returns)
+        dataset = TensorDataset(states, actions, log_probs, advantages, returns)
         loader = DataLoader(dataset, batch_size=self.minibatch_size, shuffle=True)
 
 
         for epoch in range(10):
-            for batch_states, batch_actions, batch_log_probs, batch_zs, batch_advantages, batch_returns in loader:
+            for batch_states, batch_actions, batch_log_probs, batch_advantages, batch_returns in loader:
 
                 mu_new, std_new = self.policy(batch_states)
                 values = self.critic(batch_states)
+
+                mean, std = batch_returns.mean(), batch_returns.std()
+                returns_norm = (batch_returns - mean) / (std + 1e-8)
+                values_norm = (values - mean) / (std + 1e-8)
                 value_loss = nn.MSELoss()(values, batch_returns.detach())
 
                 cov_new = torch.diag_embed(std_new**2)
                 dist_new = MultivariateNormal(mu_new, cov_new)
-                log_probs_new = dist_new.log_prob(batch_zs)
-                log_probs_new -= torch.sum(torch.log(1 - batch_actions ** 2 + 1e-6), dim=1)
+                log_probs_new = dist_new.log_prob(batch_actions)
                 
                 ratio = torch.exp(log_probs_new - batch_log_probs.squeeze(1))
                 clipped_ratio = torch.clamp(ratio, 1 - self.clip_eps, 1 + self.clip_eps)
@@ -271,7 +271,12 @@ class PPO:
                 self.policy_optimizer.step()
                 self.value_optimizer.step()
 
+
             if epoch == 2:
                 print(f"Total Step {self.total_step}, entropy: {entropy:.2f}")
                 print(f"Total Step {self.total_step}, value loss: {value_loss.mean():.2f}")
+                writer.add_scalar("value loss/train", value_loss.mean(), self.total_step)
+                writer.add_scalar("entropy/train", entropy, self.total_step)
+
+
 
