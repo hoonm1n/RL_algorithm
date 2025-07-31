@@ -15,7 +15,7 @@ from torch.distributions import Normal
 
 
 
-writer = SummaryWriter(log_dir=f"runs/SAC_hopper_{int(time.time())}")
+writer = SummaryWriter(log_dir=f"runs/SAC_halfcheetah_{int(time.time())}")
 
 class SAC:
     def __init__(self, env, device, gamma=0.99):
@@ -35,7 +35,7 @@ class SAC:
         self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=3e-4)
         self.Q1_optimizer = optim.Adam(self.Q1.parameters(), lr=3e-4)
         self.Q2_optimizer = optim.Adam(self.Q2.parameters(), lr=3e-4)
-        self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=1e-4)
+        self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=1e-5)
 
         self.rb = ReplayBuffer(self.ob_dim, self.ac_dim, capacity=1000000, device=self.device)
         self.batch_size = 256
@@ -89,7 +89,7 @@ class SAC:
 
 
                 if self.total_step % 100000 == 0:
-                    torch.save(self.policy.state_dict(), './checkpoints/model_state_dict_hopper_2.pth')
+                    torch.save(self.policy.state_dict(), './checkpoints/model_state_dict_halfcheetah_2.pth')
 
                 if self.total_step % 1000 == 0:
                     print(f"Episode {episodes}, Total step {self.total_step}, Total Reward: {total_reward / self.reward_scale:.2f}")
@@ -99,7 +99,7 @@ class SAC:
             if self.total_step >= total_update_steps:
                 break
 
-        torch.save(self.policy.state_dict(), './checkpoints/model_state_dict_hopper_2.pth')
+        torch.save(self.policy.state_dict(), './checkpoints/model_state_dict_halfcheetah_2.pth')
 
         writer.close()
 
@@ -136,7 +136,7 @@ class SAC:
 
 
 
-        target_entropy = -self.ac_dim
+        target_entropy = -self.ac_dim * 0.8
         alpha_loss = -(self.log_alpha * (new_log_probs.detach() + target_entropy)).mean()
 
         self.alpha_optimizer.zero_grad()
